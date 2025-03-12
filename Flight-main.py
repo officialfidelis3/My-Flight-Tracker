@@ -16,6 +16,11 @@ AIRLINE_INFO_API = "https://aviation-edge.com/v2/public/airlineDatabase"
 AIRLINE_API_KEY = "your_airline_api_key"
 AIRPORT_INFO_API = "https://aviation-edge.com/v2/public/airportDatabase"
 
+# Twilio Credentials
+TWILIO_ACCOUNT_SID = "your_account_sid"
+TWILIO_AUTH_TOKEN = "your_auth_token"
+TWILIO_PHONE_NUMBER = "your_twilio_phone_number"
+
 # Initialize SQLite database
 conn = sqlite3.connect("flights.db", check_same_thread=False)
 cursor = conn.cursor()
@@ -60,11 +65,19 @@ def fetch_airline_info(airline_name):
     params = {"key": AIRLINE_API_KEY, "name": airline_name}
     response = requests.get(AIRLINE_INFO_API, params=params)
     if response.status_code == 200:
-        data = response.json()
-        if data:
-            return data[0]  # Return first matching airline
+        try:
+            data = response.json()
+            if isinstance(data, list) and len(data) > 0:
+                return data[0]  # Return first matching airline
+            else:
+                st.warning("No airline details found.")
+        except ValueError:
+            st.error("Invalid response from airline API.")
+    else:
+        st.error(f"Failed to fetch airline info. Status code: {response.status_code}")
     return None
 
+# Fetch flight data
 def fetch_flight_data():
     response = requests.get(API_URL)
     if response.status_code == 200:
@@ -85,11 +98,17 @@ def filter_flights(flights):
             })
     return filtered
 
+# Fetch weather information
 def fetch_weather(city):
+    if not city:
+        return None
     params = {"q": city, "appid": WEATHER_API_KEY, "units": "metric"}
     response = requests.get(WEATHER_API_URL, params=params)
     if response.status_code == 200:
-        return response.json()
+        try:
+            return response.json()
+        except ValueError:
+            st.error("Invalid weather data received.")
     return None
 
 def fetch_airport_info(city):
@@ -100,6 +119,18 @@ def fetch_airport_info(city):
         if isinstance(data, list) and len(data) > 0:
             return data[0]
     return None
+
+# Send SMS alerts
+def send_sms_alert(to_phone, message):
+    if not to_phone:
+        st.warning("Please enter a valid phone number for SMS alerts.")
+        return
+    try:
+        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        client.messages.create(body=message, from_=TWILIO_PHONE_NUMBER, to=to_phone)
+        st.success("SMS Alert Sent Successfully!")
+    except Exception as e:
+        st.error(f"Failed to send SMS: {e}")
 
 flights = fetch_flight_data()
 filtered_flights = filter_flights(flights)
@@ -129,34 +160,9 @@ if filtered_flights:
         else:
             st.error("Could not fetch weather information.")
     
-    # Fetch airline info
-    if airline_name:
-        airline_info = fetch_airline_info(airline_name)
-        if airline_info:
-            st.subheader("🛫 Airline Information")
-            st.write(f"**Airline Name:** {airline_info['name']}\n")
-            st.write(f"**Country:** {airline_info['country']}\n")
-            st.write(f"**IATA Code:** {airline_info['iataCode']}\n")
-            st.write(f"**ICAO Code:** {airline_info['icaoCode']}\n")
-        else:
-            st.warning("Airline details not found.")
-    
-    # Fetch airport navigation
-    airport_info = fetch_airport_info(destination_city)
-    if airport_info:
-        st.subheader("🏢 Airport Terminal Information")
-        st.write(f"**Airport Name:** {airport_info.get('nameAirport', 'N/A')}\n")
-        st.write(f"**Terminal Services:** {airport_info.get('services', 'N/A')}\n")
-    else:
-        st.warning("No airport details found.")
+    # Send SMS alert
+    if passenger_phone:
+        sms_message = f"Flight {flight_number} is currently in the air. Stay updated!"
+        send_sms_alert(passenger_phone, sms_message)
 else:
     st.warning("No matching flights found.")
-
-# Email & SMS Alerts
-if st.button("Subscribe for Flight Alerts"):
-    if passenger_email or passenger_phone:
-        st.success("You will receive flight updates via email and SMS.")
-        # Placeholder for sending alerts
-        # You would integrate Twilio for SMS and SMTP for emails here.
-    else:
-        st.error("Please enter a valid email or phone number.")
