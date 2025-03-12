@@ -15,7 +15,6 @@ WEATHER_API_KEY = "your_weather_api_key"
 AIRLINE_INFO_API = "https://aviation-edge.com/v2/public/airlineDatabase"
 AIRLINE_API_KEY = "your_airline_api_key"
 AIRPORT_INFO_API = "https://aviation-edge.com/v2/public/airportDatabase"
-SEAT_LAYOUT_API = "https://api.seatguru.com/flight/seat-layout"
 
 # Initialize SQLite database
 conn = sqlite3.connect("flights.db", check_same_thread=False)
@@ -41,6 +40,12 @@ conn.commit()
 # Streamlit UI
 st.title("✈️ Passenger Flight Tracker")
 st.write("Real-time flight tracking for passengers.")
+
+# User selects country
+def get_country_list():
+    return ["Worldwide", "Nigeria", "United States", "United Kingdom", "Canada", "India", "Germany", "France", "China", "Brazil"]
+
+selected_country = st.selectbox("Select Your Country", get_country_list())
 
 # User inputs
 flight_number = st.text_input("Enter Flight Number or Callsign")
@@ -69,7 +74,7 @@ def fetch_flight_data():
 def filter_flights(flights):
     filtered = []
     for flight in flights:
-        if flight[1] and flight_number in flight[1]:
+        if flight[1] and flight_number in flight[1] and flight[6] is not None and flight[5] is not None:
             filtered.append({
                 "icao24": flight[0],
                 "callsign": flight[1].strip(),
@@ -91,13 +96,9 @@ def fetch_airport_info(city):
     params = {"nameCity": city, "key": AIRLINE_API_KEY}
     response = requests.get(AIRPORT_INFO_API, params=params)
     if response.status_code == 200:
-        return response.json()
-    return None
-
-def fetch_seat_layout(flight_number):
-    response = requests.get(f"{SEAT_LAYOUT_API}/{flight_number}")
-    if response.status_code == 200:
-        return response.json()
+        data = response.json()
+        if isinstance(data, list) and len(data) > 0:
+            return data[0]
     return None
 
 flights = fetch_flight_data()
@@ -110,11 +111,12 @@ if filtered_flights:
     # Display Map
     m = folium.Map(location=[9.08, 8.68], zoom_start=6)
     for flight in filtered_flights:
-        folium.Marker(
-            location=[flight["latitude"], flight["longitude"]],
-            popup=f'Callsign: {flight["callsign"]}\nAltitude: {flight["altitude"]}m',
-            icon=folium.Icon(color="blue", icon="plane", prefix="fa")
-        ).add_to(m)
+        if flight["latitude"] is not None and flight["longitude"] is not None:
+            folium.Marker(
+                location=[flight["latitude"], flight["longitude"]],
+                popup=f'Callsign: {flight["callsign"]}\nAltitude: {flight["altitude"]}m',
+                icon=folium.Icon(color="blue", icon="plane", prefix="fa")
+            ).add_to(m)
     folium_static(m)
     
     # Fetch weather info
@@ -143,18 +145,10 @@ if filtered_flights:
     airport_info = fetch_airport_info(destination_city)
     if airport_info:
         st.subheader("🏢 Airport Terminal Information")
-        st.write(f"**Airport Name:** {airport_info[0]['nameAirport']}\n")
-        st.write(f"**Terminal Services:** {airport_info[0]['services']}\n")
+        st.write(f"**Airport Name:** {airport_info.get('nameAirport', 'N/A')}\n")
+        st.write(f"**Terminal Services:** {airport_info.get('services', 'N/A')}\n")
     else:
         st.warning("No airport details found.")
-    
-    # Fetch seat layout
-    seat_layout = fetch_seat_layout(flight_number)
-    if seat_layout:
-        st.subheader("💺 Seat Layout Information")
-        st.image(seat_layout['seatMapUrl'], caption="Seat Map", use_column_width=True)
-    else:
-        st.warning("No seat layout found for this flight.")
 else:
     st.warning("No matching flights found.")
 
@@ -166,4 +160,3 @@ if st.button("Subscribe for Flight Alerts"):
         # You would integrate Twilio for SMS and SMTP for emails here.
     else:
         st.error("Please enter a valid email or phone number.")
-
