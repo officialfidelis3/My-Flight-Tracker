@@ -1,14 +1,14 @@
+```python
 import streamlit as st
 import requests
 import pandas as pd
 import folium
 import sqlite3
-import time
-import smtplib
 from twilio.rest import Client
 from streamlit_folium import folium_static
+from typing import Optional, List, Dict
 
-# OpenSky API URL
+# Constants for API URLs and keys
 API_URL = "https://opensky-network.org/api/states/all"
 WEATHER_API_URL = "https://api.openweathermap.org/data/2.5/weather"
 WEATHER_API_KEY = "your_weather_api_key"
@@ -46,8 +46,9 @@ conn.commit()
 st.title("✈️ Passenger Flight Tracker")
 st.write("Real-time flight tracking for passengers.")
 
-# User selects country
-def get_country_list():
+# Function to get a list of countries
+@st.cache_data
+def get_country_list() -> List[str]:
     return ["Worldwide", "Nigeria", "United States", "United Kingdom", "Canada", "India", "Germany", "France", "China", "Brazil"]
 
 selected_country = st.selectbox("Select Your Country", get_country_list())
@@ -61,13 +62,13 @@ passenger_phone = st.text_input("Enter Your Phone Number for SMS Alerts")
 destination_city = st.text_input("Enter Destination City for Weather Info")
 
 # Fetch airline details
-def fetch_airline_info(airline_name):
+def fetch_airline_info(airline_name: str) -> Optional[Dict]:
     params = {"key": AIRLINE_API_KEY, "name": airline_name}
     response = requests.get(AIRLINE_INFO_API, params=params)
     if response.status_code == 200:
         try:
             data = response.json()
-            if isinstance(data, list) and len(data) > 0:
+            if isinstance(data, list) and data:
                 return data[0]  # Return first matching airline
             else:
                 st.warning("No airline details found.")
@@ -78,28 +79,30 @@ def fetch_airline_info(airline_name):
     return None
 
 # Fetch flight data
-def fetch_flight_data():
+def fetch_flight_data() -> List[List]:
     response = requests.get(API_URL)
     if response.status_code == 200:
         return response.json().get("states", [])
+    st.error("Failed to fetch flight data.")
     return []
 
-def filter_flights(flights):
-    filtered = []
-    for flight in flights:
-        if flight[1] and flight_number in flight[1] and flight[6] is not None and flight[5] is not None:
-            filtered.append({
-                "icao24": flight[0],
-                "callsign": flight[1].strip(),
-                "latitude": flight[6],
-                "longitude": flight[5],
-                "altitude": flight[7],
-                "velocity": flight[9]
-            })
-    return filtered
+# Filter flights based on user input
+def filter_flights(flights: List[List]) -> List[Dict]:
+    return [
+        {
+            "icao24": flight[0],
+            "callsign": flight[1].strip(),
+            "latitude": flight[6],
+            "longitude": flight[5],
+            "altitude": flight[7],
+            "velocity": flight[9]
+        }
+        for flight in flights
+        if flight[1] and flight_number in flight[1] and flight[6] is not None and flight[5] is not None
+    ]
 
 # Fetch weather information
-def fetch_weather(city):
+def fetch_weather(city: str) -> Optional[Dict]:
     if not city:
         return None
     params = {"q": city, "appid": WEATHER_API_KEY, "units": "metric"}
@@ -109,19 +112,23 @@ def fetch_weather(city):
             return response.json()
         except ValueError:
             st.error("Invalid weather data received.")
+    else:
+        st.error("Failed to fetch weather data.")
     return None
 
-def fetch_airport_info(city):
+# Fetch airport information
+def fetch_airport_info(city: str) -> Optional[Dict]:
     params = {"nameCity": city, "key": AIRLINE_API_KEY}
     response = requests.get(AIRPORT_INFO_API, params=params)
     if response.status_code == 200:
         data = response.json()
-        if isinstance(data, list) and len(data) > 0:
+        if isinstance(data, list) and data:
             return data[0]
+    st.error("Failed to fetch airport information.")
     return None
 
 # Send SMS alerts
-def send_sms_alert(to_phone, message):
+def send_sms_alert(to_phone: str, message: str) -> None:
     if not to_phone:
         st.warning("Please enter a valid phone number for SMS alerts.")
         return
@@ -132,6 +139,7 @@ def send_sms_alert(to_phone, message):
     except Exception as e:
         st.error(f"Failed to send SMS: {e}")
 
+# Main logic
 flights = fetch_flight_data()
 filtered_flights = filter_flights(flights)
 
@@ -166,3 +174,4 @@ if filtered_flights:
         send_sms_alert(passenger_phone, sms_message)
 else:
     st.warning("No matching flights found.")
+```
