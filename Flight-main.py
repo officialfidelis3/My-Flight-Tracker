@@ -1,3 +1,4 @@
+```python
 import streamlit as st
 import requests
 import pandas as pd
@@ -43,6 +44,17 @@ cursor.execute("""
 conn.commit()
 
 # Streamlit UI
+st.markdown(
+    """
+    <style>
+    .main {
+        background-color: orange;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 st.title("✈️ Passenger Flight Tracker")
 st.write("Real-time flight tracking for passengers.")
 
@@ -166,3 +178,4 @@ if filtered_flights:
         send_sms_alert(passenger_phone, sms_message)
 else:
     st.warning("No matching flights found.")
+```
